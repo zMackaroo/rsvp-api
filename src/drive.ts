@@ -90,27 +90,40 @@ function loadCredentials() {
   )
 }
 
+function getAuth() {
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN?.trim()
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim()
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim()
+
+  if (refreshToken && clientId && clientSecret) {
+    const oauth2 = new google.auth.OAuth2(clientId, clientSecret)
+    oauth2.setCredentials({ refresh_token: refreshToken })
+    return oauth2
+  }
+
+  const credentials = loadCredentials()
+  if (!credentials) {
+    throw new DriveConfigError(
+      'Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN (recommended for a personal Drive), or GOOGLE_SERVICE_ACCOUNT_JSON.',
+    )
+  }
+
+  return new google.auth.GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/drive'],
+  })
+}
+
 function getClient(): DriveClient {
   if (client) return client
 
   const folderRaw = process.env.GOOGLE_DRIVE_FOLDER_ID
-  const credentials = loadCredentials()
   if (!folderRaw?.trim()) {
     throw new DriveConfigError('GOOGLE_DRIVE_FOLDER_ID is not set')
   }
-  if (!credentials) {
-    throw new DriveConfigError(
-      'Set GOOGLE_SERVICE_ACCOUNT_JSON on Railway to the service account JSON.',
-    )
-  }
-
-  const auth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: ['https://www.googleapis.com/auth/drive'],
-  })
 
   client = {
-    drive: google.drive({ version: 'v3', auth }),
+    drive: google.drive({ version: 'v3', auth: getAuth() }),
     folderId: parseFolderId(folderRaw),
   }
   return client
@@ -137,13 +150,19 @@ export function publicDriveError(error: unknown) {
       : null
 
   if (googleMessage?.toLowerCase().includes('file not found')) {
-    return 'Drive folder was not found. Check GOOGLE_DRIVE_FOLDER_ID and share the folder with the service account as Editor.'
+    return 'Drive folder was not found. Check GOOGLE_DRIVE_FOLDER_ID and that the Google account can open that folder.'
   }
   if (
     googleMessage?.toLowerCase().includes('insufficient') ||
     googleMessage?.toLowerCase().includes('permission')
   ) {
-    return 'The service account cannot access that Drive folder. Share it with the service account email as Editor.'
+    return 'That Google account cannot write to the Drive folder. Share the folder with it as Editor.'
+  }
+  if (
+    googleMessage?.toLowerCase().includes('quota') ||
+    googleMessage?.toLowerCase().includes('storage')
+  ) {
+    return 'A service account cannot store files in a personal Google Drive. Use GOOGLE_REFRESH_TOKEN from your own Google account, or upload to a Shared Drive.'
   }
 
   return null
