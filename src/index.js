@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url'
 
 const apiDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 dotenv.config({ path: path.join(apiDir, '.env') })
-dotenv.config({ path: path.resolve(apiDir, '../capture/.env') })
 
 const PORT = Number(process.env.PORT || 3001)
 
@@ -41,13 +40,9 @@ app.use(
 )
 app.use(express.json())
 
-async function sendDriveError(
-  res: express.Response,
-  error: unknown,
-  fallback: string,
-) {
+async function sendDriveError(res, error, fallback) {
   console.error(error)
-  const { DriveConfigError, publicDriveError } = await import('./drive.ts')
+  const { DriveConfigError, publicDriveError } = await import('./drive.js')
   const message = publicDriveError(error)
   res.status(error instanceof DriveConfigError ? 503 : 500).json({
     error: message ?? fallback,
@@ -73,9 +68,8 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/photos', async (_req, res) => {
   try {
-    const { listPhotos } = await import('./drive.ts')
-    const photos = await listPhotos()
-    res.json({ photos })
+    const { listPhotos } = await import('./drive.js')
+    res.json({ photos: await listPhotos() })
   } catch (error) {
     await sendDriveError(res, error, 'Could not load photos')
   }
@@ -105,7 +99,7 @@ app.post('/api/photos', async (req, res) => {
   }
 
   try {
-    const { uploadPhoto } = await import('./drive.ts')
+    const { uploadPhoto } = await import('./drive.js')
     const photos = []
     for (const file of files) {
       photos.push(
@@ -124,7 +118,7 @@ app.post('/api/photos', async (req, res) => {
 
 app.get('/api/photos/:id', async (req, res) => {
   try {
-    const { getPhotoStream } = await import('./drive.ts')
+    const { getPhotoStream } = await import('./drive.js')
     const photo = await getPhotoStream(req.params.id)
     if (!photo) {
       res.status(404).json({ error: 'Photo not found' })

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
-import { google, type drive_v3 } from 'googleapis'
+import { google } from 'googleapis'
 
 const IMAGE_TYPES = new Set([
   'image/jpeg',
@@ -20,26 +20,20 @@ export class DriveConfigError extends Error {
   }
 }
 
-type DriveClient = {
-  drive: drive_v3.Drive
-  folderId: string
-}
-
-let client: DriveClient | null = null
+let client = null
 
 function apiRoot() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 }
 
-function parseFolderId(value: string) {
+function parseFolderId(value) {
   const trimmed = value.trim()
   const fromUrl = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/)
   return fromUrl?.[1] ?? trimmed
 }
 
-function resolveKeyFile(keyFile: string) {
+function resolveKeyFile(keyFile) {
   if (path.isAbsolute(keyFile)) return keyFile
-
   const candidates = [
     path.join(apiRoot(), keyFile),
     path.join(apiRoot(), '../capture', keyFile),
@@ -47,15 +41,9 @@ function resolveKeyFile(keyFile: string) {
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]
 }
 
-type ServiceAccount = {
-  client_email?: string
-  private_key?: string
-  [key: string]: unknown
-}
-
-function parseServiceAccount(raw: string, source: string): ServiceAccount {
+function parseServiceAccount(raw, source) {
   try {
-    const parsed = JSON.parse(raw) as ServiceAccount
+    const parsed = JSON.parse(raw)
     if (typeof parsed.private_key === 'string') {
       parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
     }
@@ -105,7 +93,7 @@ function getAuth() {
   const credentials = loadCredentials()
   if (!credentials) {
     throw new DriveConfigError(
-      'Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN (recommended for a personal Drive), or GOOGLE_SERVICE_ACCOUNT_JSON.',
+      'Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN, or GOOGLE_SERVICE_ACCOUNT_JSON.',
     )
   }
 
@@ -115,7 +103,7 @@ function getAuth() {
   })
 }
 
-function getClient(): DriveClient {
+function getClient() {
   if (client) return client
 
   const folderRaw = process.env.GOOGLE_DRIVE_FOLDER_ID
@@ -130,54 +118,34 @@ function getClient(): DriveClient {
   return client
 }
 
-export function publicDriveError(error: unknown) {
+export function publicDriveError(error) {
   if (error instanceof DriveConfigError) return error.message
 
-  const googleMessage =
-    error &&
-    typeof error === 'object' &&
-    'response' in error &&
-    error.response &&
-    typeof error.response === 'object' &&
-    'data' in error.response &&
-    error.response.data &&
-    typeof error.response.data === 'object' &&
-    'error' in error.response.data &&
-    error.response.data.error &&
-    typeof error.response.data.error === 'object' &&
-    'message' in error.response.data.error &&
-    typeof error.response.data.error.message === 'string'
-      ? error.response.data.error.message
-      : null
+  const googleMessage = error?.response?.data?.error?.message
+  if (typeof googleMessage !== 'string') return null
 
-  if (googleMessage?.toLowerCase().includes('file not found')) {
-    return 'Drive folder was not found. Check GOOGLE_DRIVE_FOLDER_ID and that the Google account can open that folder.'
+  const lower = googleMessage.toLowerCase()
+  if (lower.includes('file not found')) {
+    return 'Drive folder was not found. Check GOOGLE_DRIVE_FOLDER_ID.'
   }
-  if (
-    googleMessage?.toLowerCase().includes('insufficient') ||
-    googleMessage?.toLowerCase().includes('permission')
-  ) {
-    return 'That Google account cannot write to the Drive folder. Share the folder with it as Editor.'
+  if (lower.includes('insufficient') || lower.includes('permission')) {
+    return 'That Google account cannot write to the Drive folder.'
   }
-  if (
-    googleMessage?.toLowerCase().includes('quota') ||
-    googleMessage?.toLowerCase().includes('storage')
-  ) {
-    return 'A service account cannot store files in a personal Google Drive. Use GOOGLE_REFRESH_TOKEN from your own Google account, or upload to a Shared Drive.'
+  if (lower.includes('quota') || lower.includes('storage')) {
+    return 'A service account cannot store files in a personal Google Drive. Use GOOGLE_REFRESH_TOKEN from your own Google account.'
   }
-
-  return null
+  return googleMessage
 }
 
-function escapeQuery(value: string) {
+function escapeQuery(value) {
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 }
 
-function isDriveId(id: string) {
+function isDriveId(id) {
   return /^[a-zA-Z0-9_-]{10,}$/.test(id)
 }
 
-function safeFileName(originalName: string, mimeType: string) {
+function safeFileName(originalName, mimeType) {
   const extFromName = path.extname(originalName)
   const ext =
     extFromName ||
@@ -198,7 +166,7 @@ function safeFileName(originalName: string, mimeType: string) {
   return `${Date.now()}-${base}${ext}`
 }
 
-export function isAllowedImage(mimeType: string) {
+export function isAllowedImage(mimeType) {
   return IMAGE_TYPES.has(mimeType) || mimeType.startsWith('image/')
 }
 
@@ -226,11 +194,7 @@ export async function listPhotos() {
   })
 }
 
-export async function uploadPhoto(file: {
-  buffer: Buffer
-  originalname: string
-  mimetype: string
-}) {
+export async function uploadPhoto(file) {
   if (!isAllowedImage(file.mimetype)) {
     throw new Error('Only image files can be uploaded')
   }
@@ -259,7 +223,7 @@ export async function uploadPhoto(file: {
   }
 }
 
-export async function getPhotoStream(id: string) {
+export async function getPhotoStream(id) {
   if (!isDriveId(id)) return null
 
   const { drive, folderId } = getClient()
@@ -284,6 +248,6 @@ export async function getPhotoStream(id: string) {
 
   return {
     mimeType: meta.data.mimeType,
-    stream: media.data as Readable,
+    stream: media.data,
   }
 }

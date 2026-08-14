@@ -2,10 +2,11 @@ import dotenv from 'dotenv'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { google } from 'googleapis'
 
-dotenv.config({ path: path.resolve(import.meta.dirname, '../.env') })
-dotenv.config({ path: path.resolve(import.meta.dirname, '../../capture/.env') })
+const scriptDir = path.dirname(fileURLToPath(import.meta.url))
+dotenv.config({ path: path.resolve(scriptDir, '../.env') })
 
 const PORT = 3333
 const REDIRECT = `http://127.0.0.1:${PORT}/callback`
@@ -41,7 +42,7 @@ const server = http.createServer(async (req, res) => {
       return
     }
     const { tokens } = await oauth2.getToken(code)
-    const envPath = path.resolve(import.meta.dirname, '../.env')
+    const envPath = path.resolve(scriptDir, '../.env')
     const existing = existsSync(envPath) ? readFileSync(envPath, 'utf8') : ''
     const lines = existing
       .split('\n')

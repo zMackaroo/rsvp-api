@@ -1,2 +1,2 @@
 [start]
-cmd = "npx tsx src/index.ts"
+cmd = "node src/index.js"
