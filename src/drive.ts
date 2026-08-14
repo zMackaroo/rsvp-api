@@ -30,10 +30,6 @@ function apiRoot() {
   return path.resolve(import.meta.dirname, '..')
 }
 
-function repoRoot() {
-  return path.resolve(apiRoot(), '..')
-}
-
 function parseFolderId(value: string) {
   const trimmed = value.trim()
   const fromUrl = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/)
@@ -45,7 +41,7 @@ function resolveKeyFile(keyFile: string) {
 
   const candidates = [
     path.join(apiRoot(), keyFile),
-    path.join(repoRoot(), keyFile),
+    path.join(apiRoot(), '../capture', keyFile),
   ]
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]
 }

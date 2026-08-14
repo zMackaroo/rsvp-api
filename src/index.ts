@@ -7,7 +7,7 @@ import { DriveConfigError, getPhotoStream, listPhotos, uploadPhoto } from './dri
 
 const apiDir = path.resolve(import.meta.dirname, '..')
 dotenv.config({ path: path.join(apiDir, '.env') })
-dotenv.config({ path: path.resolve(apiDir, '../.env') })
+dotenv.config({ path: path.resolve(apiDir, '../capture/.env') })
 
 const PORT = Number(process.env.PORT || 3001)
 const frontendOrigins = (process.env.FRONTEND_ORIGIN ?? 'http://localhost:5173')
