@@ -3,7 +3,7 @@ import dotenv from 'dotenv'
 import express from 'express'
 import multer from 'multer'
 import path from 'node:path'
-import { DriveConfigError, getPhotoStream, listPhotos, uploadPhoto } from './drive.ts'
+import { DriveConfigError, getPhotoStream, listPhotos, publicDriveError, uploadPhoto } from './drive.ts'
 
 const apiDir = path.resolve(import.meta.dirname, '..')
 dotenv.config({ path: path.join(apiDir, '.env') })
@@ -61,12 +61,27 @@ app.use(
 )
 app.use(express.json())
 
-function configError(error: unknown) {
-  return error instanceof DriveConfigError
+function sendDriveError(res: express.Response, error: unknown, fallback: string) {
+  console.error(error)
+  const message = publicDriveError(error)
+  res.status(error instanceof DriveConfigError ? 503 : 500).json({
+    error: message ?? fallback,
+  })
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true })
+  res.json({
+    ok: true,
+    drive: {
+      folderId: Boolean(process.env.GOOGLE_DRIVE_FOLDER_ID?.trim()),
+      serviceAccountJson: Boolean(
+        process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim(),
+      ),
+      credentialsFile: Boolean(
+        process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim(),
+      ),
+    },
+  })
 })
 
 app.get('/api/photos', async (_req, res) => {
@@ -74,12 +89,7 @@ app.get('/api/photos', async (_req, res) => {
     const photos = await listPhotos()
     res.json({ photos })
   } catch (error) {
-    console.error(error)
-    res.status(configError(error) ? 503 : 500).json({
-      error: configError(error)
-        ? 'Google Drive is not configured'
-        : 'Could not load photos',
-    })
+    sendDriveError(res, error, 'Could not load photos')
   }
 })
 
@@ -119,12 +129,7 @@ app.post('/api/photos', async (req, res) => {
     }
     res.status(201).json({ photos })
   } catch (error) {
-    console.error(error)
-    res.status(configError(error) ? 503 : 500).json({
-      error: configError(error)
-        ? 'Google Drive is not configured'
-        : 'Could not save photo to Drive',
-    })
+    sendDriveError(res, error, 'Could not save photo to Drive')
   }
 })
 
@@ -143,10 +148,7 @@ app.get('/api/photos/:id', async (req, res) => {
     })
     photo.stream.pipe(res)
   } catch (error) {
-    console.error(error)
-    res.status(configError(error) ? 503 : 500).json({
-      error: 'Could not load photo',
-    })
+    sendDriveError(res, error, 'Could not load photo')
   }
 })
 

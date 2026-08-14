@@ -46,17 +46,48 @@ function resolveKeyFile(keyFile: string) {
   return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]
 }
 
+type ServiceAccount = {
+  client_email?: string
+  private_key?: string
+  [key: string]: unknown
+}
+
+function parseServiceAccount(raw: string, source: string): ServiceAccount {
+  try {
+    const parsed = JSON.parse(raw) as ServiceAccount
+    if (typeof parsed.private_key === 'string') {
+      parsed.private_key = parsed.private_key.replace(/\\n/g, '\n')
+    }
+    if (!parsed.client_email || !parsed.private_key) {
+      throw new DriveConfigError(
+        `${source} must include client_email and private_key`,
+      )
+    }
+    return parsed
+  } catch (error) {
+    if (error instanceof DriveConfigError) throw error
+    throw new DriveConfigError(`${source} is not valid JSON`)
+  }
+}
+
 function loadCredentials() {
   const inline = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim()
-  if (inline) return JSON.parse(inline) as Record<string, unknown>
+  if (inline) return parseServiceAccount(inline, 'GOOGLE_SERVICE_ACCOUNT_JSON')
 
   const keyFile = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim()
   if (!keyFile) return null
 
-  return JSON.parse(readFileSync(resolveKeyFile(keyFile), 'utf8')) as Record<
-    string,
-    unknown
-  >
+  const resolved = resolveKeyFile(keyFile)
+  if (!existsSync(resolved)) {
+    throw new DriveConfigError(
+      'Service account key file was not found. On Railway, set GOOGLE_SERVICE_ACCOUNT_JSON to the JSON key contents.',
+    )
+  }
+
+  return parseServiceAccount(
+    readFileSync(resolved, 'utf8'),
+    'GOOGLE_APPLICATION_CREDENTIALS',
+  )
 }
 
 function getClient(): DriveClient {
@@ -64,8 +95,13 @@ function getClient(): DriveClient {
 
   const folderRaw = process.env.GOOGLE_DRIVE_FOLDER_ID
   const credentials = loadCredentials()
-  if (!folderRaw?.trim() || !credentials) {
-    throw new DriveConfigError()
+  if (!folderRaw?.trim()) {
+    throw new DriveConfigError('GOOGLE_DRIVE_FOLDER_ID is not set')
+  }
+  if (!credentials) {
+    throw new DriveConfigError(
+      'Set GOOGLE_SERVICE_ACCOUNT_JSON on Railway to the service account JSON.',
+    )
   }
 
   const auth = new google.auth.GoogleAuth({
@@ -78,6 +114,39 @@ function getClient(): DriveClient {
     folderId: parseFolderId(folderRaw),
   }
   return client
+}
+
+export function publicDriveError(error: unknown) {
+  if (error instanceof DriveConfigError) return error.message
+
+  const googleMessage =
+    error &&
+    typeof error === 'object' &&
+    'response' in error &&
+    error.response &&
+    typeof error.response === 'object' &&
+    'data' in error.response &&
+    error.response.data &&
+    typeof error.response.data === 'object' &&
+    'error' in error.response.data &&
+    error.response.data.error &&
+    typeof error.response.data.error === 'object' &&
+    'message' in error.response.data.error &&
+    typeof error.response.data.error.message === 'string'
+      ? error.response.data.error.message
+      : null
+
+  if (googleMessage?.toLowerCase().includes('file not found')) {
+    return 'Drive folder was not found. Check GOOGLE_DRIVE_FOLDER_ID and share the folder with the service account as Editor.'
+  }
+  if (
+    googleMessage?.toLowerCase().includes('insufficient') ||
+    googleMessage?.toLowerCase().includes('permission')
+  ) {
+    return 'The service account cannot access that Drive folder. Share it with the service account email as Editor.'
+  }
+
+  return null
 }
 
 function escapeQuery(value: string) {
