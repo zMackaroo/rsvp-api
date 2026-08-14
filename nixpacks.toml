@@ -1,2 +1,2 @@
 [start]
-cmd = "node dist/index.js"
+cmd = "npx tsx src/index.ts"

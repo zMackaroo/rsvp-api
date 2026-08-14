@@ -8,14 +8,12 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --packages=external --format=esm --outfile=dist/index.js",
-    "start": "node dist/index.js",
+    "start": "tsx src/index.ts",
     "auth": "tsx scripts/google-auth.ts"
   },
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
-    "esbuild": "^0.25.12",
     "express": "^4.22.2",
     "googleapis": "^174.0.1",
     "multer": "^2.2.0",
