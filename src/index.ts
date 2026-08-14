@@ -10,8 +10,13 @@ dotenv.config({ path: path.join(apiDir, '.env') })
 dotenv.config({ path: path.resolve(apiDir, '../capture/.env') })
 
 const PORT = Number(process.env.PORT || 3001)
-const frontendOrigins = (process.env.FRONTEND_ORIGIN ?? 'http://localhost:5173')
-  .split(',')
+const frontendOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://192.168.254.109:5173',
+  'https://christian-and-franchess.vercel.app',
+  ...(process.env.FRONTEND_ORIGIN ?? '').split(','),
+]
   .map((origin) => origin.trim())
   .filter(Boolean)
 
@@ -28,7 +33,32 @@ const upload = multer({
 })
 
 const app = express()
-app.use(cors({ origin: frontendOrigins }))
+const allowedOrigins = new Set(frontendOrigins)
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true)
+        return
+      }
+      try {
+        const { hostname } = new URL(origin)
+        if (
+          hostname === 'christian-and-franchess.vercel.app' ||
+          (hostname.endsWith('.vercel.app') &&
+            hostname.includes('christian-and-franchess'))
+        ) {
+          callback(null, true)
+          return
+        }
+      } catch {
+        /* ignore invalid origins */
+      }
+      callback(null, false)
+    },
+  }),
+)
 app.use(express.json())
 
 function configError(error: unknown) {
