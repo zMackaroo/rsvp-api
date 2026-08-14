@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { Readable } from 'node:stream'
+import { fileURLToPath } from 'node:url'
 import { google, type drive_v3 } from 'googleapis'
 
 const IMAGE_TYPES = new Set([
@@ -27,7 +28,7 @@ type DriveClient = {
 let client: DriveClient | null = null
 
 function apiRoot() {
-  return path.resolve(import.meta.dirname, '..')
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 }
 
 function parseFolderId(value: string) {

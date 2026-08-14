@@ -3,22 +3,20 @@ import dotenv from 'dotenv'
 import express from 'express'
 import multer from 'multer'
 import path from 'node:path'
-import { DriveConfigError, getPhotoStream, listPhotos, publicDriveError, uploadPhoto } from './drive.ts'
+import { fileURLToPath } from 'node:url'
 
-const apiDir = path.resolve(import.meta.dirname, '..')
+const apiDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 dotenv.config({ path: path.join(apiDir, '.env') })
 dotenv.config({ path: path.resolve(apiDir, '../capture/.env') })
 
 const PORT = Number(process.env.PORT || 3001)
-const frontendOrigins = [
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://192.168.254.109:5173',
-  'https://christian-and-franchess.vercel.app',
-  ...(process.env.FRONTEND_ORIGIN ?? '').split(','),
-]
-  .map((origin) => origin.trim())
-  .filter(Boolean)
+
+process.on('unhandledRejection', (error) => {
+  console.error('unhandledRejection', error)
+})
+process.on('uncaughtException', (error) => {
+  console.error('uncaughtException', error)
+})
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -33,36 +31,23 @@ const upload = multer({
 })
 
 const app = express()
-const allowedOrigins = new Set(frontendOrigins)
-
 app.use(
   cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) {
-        callback(null, true)
-        return
-      }
-      try {
-        const { hostname } = new URL(origin)
-        if (
-          hostname === 'christian-and-franchess.vercel.app' ||
-          (hostname.endsWith('.vercel.app') &&
-            hostname.includes('christian-and-franchess'))
-        ) {
-          callback(null, true)
-          return
-        }
-      } catch {
-        /* ignore invalid origins */
-      }
-      callback(null, false)
-    },
+    origin: true,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type'],
+    maxAge: 86400,
   }),
 )
 app.use(express.json())
 
-function sendDriveError(res: express.Response, error: unknown, fallback: string) {
+async function sendDriveError(
+  res: express.Response,
+  error: unknown,
+  fallback: string,
+) {
   console.error(error)
+  const { DriveConfigError, publicDriveError } = await import('./drive.ts')
   const message = publicDriveError(error)
   res.status(error instanceof DriveConfigError ? 503 : 500).json({
     error: message ?? fallback,
@@ -74,11 +59,13 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     drive: {
       folderId: Boolean(process.env.GOOGLE_DRIVE_FOLDER_ID?.trim()),
+      oauth: Boolean(
+        process.env.GOOGLE_REFRESH_TOKEN?.trim() &&
+          process.env.GOOGLE_CLIENT_ID?.trim() &&
+          process.env.GOOGLE_CLIENT_SECRET?.trim(),
+      ),
       serviceAccountJson: Boolean(
         process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim(),
-      ),
-      credentialsFile: Boolean(
-        process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim(),
       ),
     },
   })
@@ -86,10 +73,11 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/photos', async (_req, res) => {
   try {
+    const { listPhotos } = await import('./drive.ts')
     const photos = await listPhotos()
     res.json({ photos })
   } catch (error) {
-    sendDriveError(res, error, 'Could not load photos')
+    await sendDriveError(res, error, 'Could not load photos')
   }
 })
 
@@ -117,6 +105,7 @@ app.post('/api/photos', async (req, res) => {
   }
 
   try {
+    const { uploadPhoto } = await import('./drive.ts')
     const photos = []
     for (const file of files) {
       photos.push(
@@ -129,12 +118,13 @@ app.post('/api/photos', async (req, res) => {
     }
     res.status(201).json({ photos })
   } catch (error) {
-    sendDriveError(res, error, 'Could not save photo to Drive')
+    await sendDriveError(res, error, 'Could not save photo to Drive')
   }
 })
 
 app.get('/api/photos/:id', async (req, res) => {
   try {
+    const { getPhotoStream } = await import('./drive.ts')
     const photo = await getPhotoStream(req.params.id)
     if (!photo) {
       res.status(404).json({ error: 'Photo not found' })
@@ -148,10 +138,10 @@ app.get('/api/photos/:id', async (req, res) => {
     })
     photo.stream.pipe(res)
   } catch (error) {
-    sendDriveError(res, error, 'Could not load photo')
+    await sendDriveError(res, error, 'Could not load photo')
   }
 })
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Album API listening on http://localhost:${PORT}`)
+  console.log(`Album API listening on 0.0.0.0:${PORT}`)
 })

@@ -1,4 +1,5 @@
 import dotenv from 'dotenv'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { google } from 'googleapis'
@@ -40,15 +41,31 @@ const server = http.createServer(async (req, res) => {
       return
     }
     const { tokens } = await oauth2.getToken(code)
+    const envPath = path.resolve(import.meta.dirname, '../.env')
+    const existing = existsSync(envPath) ? readFileSync(envPath, 'utf8') : ''
+    const lines = existing
+      .split('\n')
+      .filter(
+        (line) =>
+          !line.startsWith('GOOGLE_CLIENT_ID=') &&
+          !line.startsWith('GOOGLE_CLIENT_SECRET=') &&
+          !line.startsWith('GOOGLE_REFRESH_TOKEN='),
+      )
+      .join('\n')
+      .replace(/\n*$/, '\n')
+    writeFileSync(
+      envPath,
+      `${lines}GOOGLE_CLIENT_ID=${clientId}\nGOOGLE_CLIENT_SECRET=${clientSecret}\nGOOGLE_REFRESH_TOKEN=${tokens.refresh_token ?? ''}\n`,
+    )
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' })
     res.end('You can close this tab and return to the terminal.')
-    console.log('\nAdd this to Railway (and capture-api/.env):\n')
-    console.log(`GOOGLE_CLIENT_ID=${clientId}`)
-    console.log(`GOOGLE_CLIENT_SECRET=${clientSecret}`)
-    console.log(`GOOGLE_REFRESH_TOKEN=${tokens.refresh_token ?? ''}`)
+    console.log(`Saved tokens to ${envPath}`)
+    console.log(
+      'Add GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN in Railway Variables. Do not commit .env.',
+    )
     if (!tokens.refresh_token) {
       console.log(
-        '\nNo refresh token returned. Remove the app access at https://myaccount.google.com/permissions and run this again.',
+        'No refresh token returned. Remove the app access at https://myaccount.google.com/permissions and run this again.',
       )
     }
     server.close()
